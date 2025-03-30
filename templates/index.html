@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DigitNet - Draw & Predict</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin-top: 20px; }
+        #canvas { border: 2px solid black; cursor: crosshair; touch-action: none; /* Prevent scrolling on touch */ }
+        #controls { margin-top: 15px; }
+        button { padding: 10px 15px; font-size: 1em; margin: 0 5px; }
+        #predictionResult { margin-top: 20px; font-size: 1.5em; font-weight: bold; min-height: 30px; }
+    </style>
+</head>
+<body>
+    <h1>Draw a Digit (0-9)</h1>
+    <canvas id="canvas" width="280" height="280"></canvas>
+    <div id="controls">
+        <button id="predictBtn">Predict</button>
+        <button id="clearBtn">Clear</button>
+    </div>
+    <div id="predictionResult">Prediction: ?</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const predictBtn = document.getElementById('predictBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const predictionResult = document.getElementById('predictionResult');
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        // --- Canvas Setup ---
+        ctx.fillStyle = "white"; // Background color
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "black"; // Drawing color
+        ctx.lineWidth = 15; // Make lines thick for easier recognition
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // --- Drawing Logic ---
+        function startDrawing(e) {
+            isDrawing = true;
+            [lastX, lastY] = getMousePos(canvas, e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault(); // Prevent scrolling while drawing
+            const [currentX, currentY] = getMousePos(canvas, e);
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(currentX, currentY);
+            ctx.stroke();
+            [lastX, lastY] = [currentX, currentY];
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function getMousePos(canvasDom, event) {
+            const rect = canvasDom.getBoundingClientRect();
+            // Handle both mouse and touch events
+            const clientX = event.clientX || event.touches[0].clientX;
+            const clientY = event.clientY || event.touches[0].clientY;
+            return [
+                clientX - rect.left,
+                clientY - rect.top
+            ];
+        }
+
+        // Mouse Events
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing); // Stop if mouse leaves canvas
+
+        // Touch Events
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e); });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); });
+        canvas.addEventListener('touchend', stopDrawing);
+
+
+        // --- Button Actions ---
+        clearBtn.addEventListener('click', () => {
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            predictionResult.textContent = 'Prediction: ?';
+        });
+
+        predictBtn.addEventListener('click', async () => {
+            const imageDataUrl = canvas.toDataURL('image/png'); // Get image as base64 PNG
+            predictionResult.textContent = 'Predicting...';
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image: imageDataUrl }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                predictionResult.textContent = `Prediction: ${data.prediction}`;
+
+            } catch (error) {
+                console.error('Prediction error:', error);
+                predictionResult.textContent = `Error: ${error.message}`;
+            }
+        });
+
+    </script>
+</body>
+</html>
