@@ -67,11 +67,13 @@ def predict():
         img_data = data['image']
         processed_img = preprocess_image(img_data)
 
-        # Make prediction
-        prediction = model.predict(processed_img)
-        predicted_digit = int(np.argmax(prediction)) # Get the index of the highest probability
+        # Make prediction - returns probabilities for each class (0-9)
+        probabilities = model.predict(processed_img)[0] # Get the probabilities array
+        predicted_digit = int(np.argmax(probabilities)) # Get the index of the highest probability
+        probabilities_list = probabilities.tolist() # Convert numpy array to Python list
 
-        return jsonify({'prediction': predicted_digit})
+        # Return both prediction and probabilities
+        return jsonify({'prediction': predicted_digit, 'probabilities': probabilities_list})
 
     except ValueError as ve:
          print(f"Preprocessing Error: {ve}")

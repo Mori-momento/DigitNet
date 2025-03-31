@@ -2,15 +2,20 @@
 <html>
 <head>
     <title>DigitNet - Draw & Predict</title>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin-top: 20px; }
+        body { font-family: sans-serif; display: flex; flex-direction: row; align-items: center; justify-content: center; margin-top: 20px; width: 100%; }
         #canvas { border: 2px solid black; cursor: crosshair; touch-action: none; /* Prevent scrolling on touch */ }
         #controls { margin-top: 15px; }
         button { padding: 10px 15px; font-size: 1em; margin: 0 5px; }
         #predictionResult { margin-top: 20px; font-size: 1.5em; font-weight: bold; min-height: 30px; }
+        #chartContainer { margin-top: 20px; width: 80%; max-width: 400px; height: 250px; /* Added container for sizing */ }
+        #probabilityChart { height: 280px; }
     </style>
 </head>
 <body>
+    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 40px;">
     <h1>Draw a Digit (0-9)</h1>
     <canvas id="canvas" width="280" height="280"></canvas>
     <div id="controls">
@@ -18,6 +23,11 @@
         <button id="clearBtn">Clear</button>
     </div>
     <div id="predictionResult">Prediction: ?</div>
+    </div>
+    <!-- Add a container and canvas for the chart -->
+    <div id="chartContainer">
+        <canvas id="probabilityChart"></canvas>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -25,9 +35,11 @@
         const predictBtn = document.getElementById('predictBtn');
         const clearBtn = document.getElementById('clearBtn');
         const predictionResult = document.getElementById('predictionResult');
+        const probabilityChartCtx = document.getElementById('probabilityChart').getContext('2d');
         let isDrawing = false;
         let lastX = 0;
         let lastY = 0;
+        let probabilityChartInstance = null; // To hold the chart instance
 
         // --- Canvas Setup ---
         ctx.fillStyle = "white"; // Background color
@@ -81,16 +93,86 @@
         canvas.addEventListener('touchend', stopDrawing);
 
 
+        // --- Chart Rendering ---
+        function renderProbabilityChart(probabilities) {
+            // Destroy previous chart instance if it exists
+            if (probabilityChartInstance) {
+                probabilityChartInstance.destroy();
+            }
+
+            probabilityChartInstance = new Chart(probabilityChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                    datasets: [{
+                        label: 'Probability',
+                        data: probabilities,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)', // Teal color
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1, // Probabilities range from 0 to 1
+                            title: {
+                                display: true,
+                                text: 'Probability'
+                            }
+                        },
+                        x: {
+                             title: {
+                                display: true,
+                                text: 'Digit'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false // Hide the legend as it's redundant here
+                        },
+                        tooltip: {
+                             callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        // Format probability to 3 decimal places
+                                        label += context.parsed.y.toFixed(3);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false // Allow chart to fill container height
+                }
+            });
+        }
+
         // --- Button Actions ---
         clearBtn.addEventListener('click', () => {
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             predictionResult.textContent = 'Prediction: ?';
+            // Keep the chart visible with the last prediction data
         });
 
         predictBtn.addEventListener('click', async () => {
             const imageDataUrl = canvas.toDataURL('image/png'); // Get image as base64 PNG
             predictionResult.textContent = 'Predicting...';
+            // Clear previous chart before prediction
+             if (probabilityChartInstance) {
+                probabilityChartInstance.destroy();
+                probabilityChartInstance = null;
+            }
+             probabilityChartCtx.clearRect(0, 0, probabilityChartCtx.canvas.width, probabilityChartCtx.canvas.height);
+
 
             try {
                 const response = await fetch('/predict', {
@@ -109,9 +191,29 @@
                 const data = await response.json();
                 predictionResult.textContent = `Prediction: ${data.prediction}`;
 
+                // Render the probability chart using the received probabilities
+                if (data.probabilities && Array.isArray(data.probabilities)) {
+                    renderProbabilityChart(data.probabilities);
+                } else {
+                     console.error("Probabilities data not found or not an array in response:", data);
+                     // Optionally clear chart area if data is bad
+                     if (probabilityChartInstance) {
+                        probabilityChartInstance.destroy();
+                        probabilityChartInstance = null;
+                     }
+                     probabilityChartCtx.clearRect(0, 0, probabilityChartCtx.canvas.width, probabilityChartCtx.canvas.height);
+                }
+
+
             } catch (error) {
                 console.error('Prediction error:', error);
                 predictionResult.textContent = `Error: ${error.message}`;
+                 // Clear chart on error
+                 if (probabilityChartInstance) {
+                    probabilityChartInstance.destroy();
+                    probabilityChartInstance = null;
+                 }
+                 probabilityChartCtx.clearRect(0, 0, probabilityChartCtx.canvas.width, probabilityChartCtx.canvas.height);
             }
         });
 
